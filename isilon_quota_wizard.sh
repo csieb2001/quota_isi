@@ -60,18 +60,18 @@ USE_PARALLEL="n"
 
 print_header() {
     clear
-    echo -e "${CYAN}╔════════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║${WHITE}${BOLD}        PowerScale/Isilon Quota Wizard v1.0                     ${NC}${CYAN}║${NC}"
-    echo -e "${CYAN}║                                                                    ║${NC}"
-    echo -e "${CYAN}║${NC}        ${WHITE}Copyright © 2024 Christopher Siebert${NC}                   ${CYAN}║${NC}"
-    echo -e "${CYAN}║${NC}        ${CYAN}christopher.siebert@concat.de${NC}                          ${CYAN}║${NC}"
-    echo -e "${CYAN}╚════════════════════════════════════════════════════════════════════╝${NC}"
+    echo -e "${CYAN}========================================================================${NC}"
+    echo -e "${WHITE}${BOLD}        PowerScale/Isilon Quota Wizard v1.0                         ${NC}"
+    echo -e ""
+    echo -e "        ${WHITE}Copyright © 2024 Christopher Siebert${NC}"
+    echo -e "        ${CYAN}christopher.siebert@concat.de${NC}"
+    echo -e "${CYAN}========================================================================${NC}"
     echo
 }
 
 print_step() {
     echo -e "${BLUE}${BOLD}$1${NC}"
-    echo -e "${BLUE}$(printf '─%.0s' {1..70})${NC}"
+    echo -e "${BLUE}$(printf '=%.0s' {1..70})${NC}"
     echo
 }
 
@@ -667,42 +667,42 @@ show_summary() {
     print_step "Schritt 8: Zusammenfassung"
     
     echo -e "${WHITE}${BOLD}Konfiguration:${NC}"
-    echo -e "${CYAN}┌────────────────────────────────────────────────────────────────────┐${NC}"
-    printf "${CYAN}│${NC} %-30s ${WHITE}%s${NC}\n" "Basis-Pfad:" "$BASE_PATH" | sed 's/$/ │/'
-    printf "${CYAN}│${NC} %-30s ${WHITE}%s${NC}\n" "Verzeichnis-Präfix:" "$PREFIX" | sed 's/$/ │/'
-    printf "${CYAN}│${NC} %-30s ${WHITE}%s${NC}\n" "Anzahl Verzeichnisse:" "$COUNT" | sed 's/$/ │/'
+    echo -e "${CYAN}========================================================================${NC}"
+    printf "%-32s ${WHITE}%s${NC}\n" "Basis-Pfad:" "$BASE_PATH"
+    printf "%-32s ${WHITE}%s${NC}\n" "Verzeichnis-Präfix:" "$PREFIX"
+    printf "%-32s ${WHITE}%s${NC}\n" "Anzahl Verzeichnisse:" "$COUNT"
     if [ "$SET_OWNER" = "y" ]; then
-        printf "${CYAN}│${NC} %-30s ${WHITE}%s${NC}\n" "Owner:" "$OWNER_USER:$OWNER_GROUP" | sed 's/$/ │/'
+        printf "%-32s ${WHITE}%s${NC}\n" "Owner:" "$OWNER_USER:$OWNER_GROUP"
     else
-        printf "${CYAN}│${NC} %-30s ${WHITE}%s${NC}\n" "Owner:" "$OWNER_USER:$OWNER_GROUP (Standard)" | sed 's/$/ │/'
+        printf "%-32s ${WHITE}%s${NC}\n" "Owner:" "$OWNER_USER:$OWNER_GROUP (Standard)"
     fi
-    echo -e "${CYAN}├────────────────────────────────────────────────────────────────────┤${NC}"
-    printf "${CYAN}│${NC} ${BOLD}%-68s${NC}${CYAN}│${NC}\n" "Quota-Einstellungen:"
-    printf "${CYAN}│${NC}   %-28s ${WHITE}%s${NC}\n" "Hard Threshold:" "$QUOTA_HARD" | sed 's/$/ │/'
+    echo -e "${CYAN}------------------------------------------------------------------------${NC}"
+    echo -e "${BOLD}Quota-Einstellungen:${NC}"
+    printf "  %-30s ${WHITE}%s${NC}\n" "Hard Threshold:" "$QUOTA_HARD"
     if [ -n "$QUOTA_SOFT" ]; then
-        printf "${CYAN}│${NC}   %-28s ${WHITE}%s${NC}\n" "Soft Threshold:" "$QUOTA_SOFT" | sed 's/$/ │/'
-        printf "${CYAN}│${NC}   %-28s ${WHITE}%s Sek (~%d Tage)${NC}\n" "Grace Period:" "$QUOTA_SOFT_GRACE" "$((QUOTA_SOFT_GRACE / 86400))" | sed 's/$/ │/'
+        printf "  %-30s ${WHITE}%s${NC}\n" "Soft Threshold:" "$QUOTA_SOFT"
+        printf "  %-30s ${WHITE}%s Sek (~%d Tage)${NC}\n" "Grace Period:" "$QUOTA_SOFT_GRACE" "$((QUOTA_SOFT_GRACE / 86400))"
     else
-        printf "${CYAN}│${NC}   %-28s ${WHITE}%s${NC}\n" "Soft Threshold:" "(nicht gesetzt)" | sed 's/$/ │/'
+        printf "  %-30s ${WHITE}%s${NC}\n" "Soft Threshold:" "(nicht gesetzt)"
     fi
     if [ -n "$QUOTA_ADVISORY" ]; then
-        printf "${CYAN}│${NC}   %-28s ${WHITE}%s${NC}\n" "Advisory Threshold:" "$QUOTA_ADVISORY" | sed 's/$/ │/'
+        printf "  %-30s ${WHITE}%s${NC}\n" "Advisory Threshold:" "$QUOTA_ADVISORY"
     else
-        printf "${CYAN}│${NC}   %-28s ${WHITE}%s${NC}\n" "Advisory Threshold:" "(nicht gesetzt)" | sed 's/$/ │/'
+        printf "  %-30s ${WHITE}%s${NC}\n" "Advisory Threshold:" "(nicht gesetzt)"
     fi
-    printf "${CYAN}│${NC}   %-28s ${WHITE}%s${NC}\n" "Berechnungsgrundlage:" "$QUOTA_THRESHOLDS_ON" | sed 's/$/ │/'
+    printf "  %-30s ${WHITE}%s${NC}\n" "Berechnungsgrundlage:" "$QUOTA_THRESHOLDS_ON"
     if [ "$QUOTA_INCLUDE_SNAPSHOTS" = "true" ]; then
-        printf "${CYAN}│${NC}   %-28s ${WHITE}%s${NC}\n" "Snapshots:" "Einbezogen" | sed 's/$/ │/'
+        printf "  %-30s ${WHITE}%s${NC}\n" "Snapshots:" "Einbezogen"
     else
-        printf "${CYAN}│${NC}   %-28s ${WHITE}%s${NC}\n" "Snapshots:" "NICHT einbezogen" | sed 's/$/ │/'
+        printf "  %-30s ${WHITE}%s${NC}\n" "Snapshots:" "NICHT einbezogen"
     fi
-    echo -e "${CYAN}├────────────────────────────────────────────────────────────────────┤${NC}"
+    echo -e "${CYAN}------------------------------------------------------------------------${NC}"
     if [ "$USE_PARALLEL" = "y" ]; then
-        printf "${CYAN}│${NC} %-30s ${WHITE}%s${NC}\n" "Verarbeitungsmodus:" "Parallel ($PARALLEL_JOBS Jobs)" | sed 's/$/ │/'
+        printf "%-32s ${WHITE}%s${NC}\n" "Verarbeitungsmodus:" "Parallel ($PARALLEL_JOBS Jobs)"
     else
-        printf "${CYAN}│${NC} %-30s ${WHITE}%s${NC}\n" "Verarbeitungsmodus:" "Sequentiell" | sed 's/$/ │/'
+        printf "%-32s ${WHITE}%s${NC}\n" "Verarbeitungsmodus:" "Sequentiell"
     fi
-    echo -e "${CYAN}└────────────────────────────────────────────────────────────────────┘${NC}"
+    echo -e "${CYAN}========================================================================${NC}"
     echo
     
     # Schätzung der Dauer
@@ -866,9 +866,9 @@ execute_creation() {
     local duration=$((end_time - start_time))
     
     echo
-    echo -e "${GREEN}${BOLD}════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}${BOLD}====================================================================${NC}"
     echo -e "${GREEN}${BOLD}                    Erstellung abgeschlossen!                       ${NC}"
-    echo -e "${GREEN}${BOLD}════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}${BOLD}====================================================================${NC}"
     echo
     
     # Statistiken
@@ -911,7 +911,7 @@ show_quota_overview() {
         fi
         
         echo
-        echo -e "${CYAN}══════════════════════════════════════════════════════════════════${NC}"
+        echo -e "${CYAN}====================================================================${NC}"
         print_info "Nützliche Kommandos:"
         echo -e "${WHITE}  # Alle Quotas anzeigen:${NC}"
         echo -e "${CYAN}  isi quota list${NC}"
@@ -924,40 +924,470 @@ show_quota_overview() {
         echo
         echo -e "${WHITE}  # Quota-Nutzung überwachen:${NC}"
         echo -e "${CYAN}  isi quota list --format table${NC}"
-        echo -e "${CYAN}══════════════════════════════════════════════════════════════════${NC}"
+        echo -e "${CYAN}====================================================================${NC}"
     fi
+}
+
+################################################################################
+# Quota-Löschfunktionen
+################################################################################
+
+get_delete_path() {
+    print_header
+    print_step "Schritt 1: Pfad für Quota-Löschung"
+    
+    print_warning "ACHTUNG: Diese Funktion löscht Quotas!"
+    print_info "Gib den Basis-Pfad an, dessen Quotas gelöscht werden sollen."
+    echo
+    print_info "Beispiele: /ifs/data/projects, /ifs/testdirs"
+    echo
+    
+    while true; do
+        read -p "$(echo -e ${WHITE}${ARROW} Pfad:${NC} )" DELETE_PATH
+        
+        if [ -z "$DELETE_PATH" ]; then
+            print_error "Pfad darf nicht leer sein!"
+            echo
+            continue
+        fi
+        
+        if [[ ! "$DELETE_PATH" =~ ^/ifs ]]; then
+            print_error "Pfad muss mit /ifs beginnen!"
+            echo
+            continue
+        fi
+        
+        if [ ! -d "$DELETE_PATH" ]; then
+            print_error "Pfad existiert nicht: $DELETE_PATH"
+            echo
+            continue
+        fi
+        
+        print_success "Pfad gesetzt: $DELETE_PATH"
+        break
+    done
+    
+    press_any_key
+}
+
+get_delete_options() {
+    print_header
+    print_step "Schritt 2: Quota-Typ auswählen"
+    
+    print_info "Welche Quota-Typen sollen gelöscht werden?"
+    echo
+    echo -e "${WHITE}1)${NC} Nur ${CYAN}Directory${NC} Quotas"
+    echo -e "${WHITE}2)${NC} Nur ${CYAN}User${NC} Quotas"
+    echo -e "${WHITE}3)${NC} ${CYAN}Beide${NC} (Directory + User Quotas)"
+    echo
+    
+    while true; do
+        read -p "$(echo -e ${WHITE}${ARROW} Auswahl [${GREEN}1${WHITE}]:${NC} )" choice
+        
+        if [ -z "$choice" ]; then
+            choice=1
+        fi
+        
+        case $choice in
+            1)
+                DELETE_TYPES="directory"
+                print_success "Typ gesetzt: Nur Directory Quotas"
+                break
+                ;;
+            2)
+                DELETE_TYPES="user"
+                print_success "Typ gesetzt: Nur User Quotas"
+                break
+                ;;
+            3)
+                DELETE_TYPES="both"
+                print_success "Typ gesetzt: Directory + User Quotas"
+                break
+                ;;
+            *)
+                print_error "Ungültige Auswahl! Bitte 1, 2 oder 3 eingeben."
+                ;;
+        esac
+        echo
+    done
+    
+    echo
+    
+    # Rekursiv oder nur direkte Unterverzeichnisse?
+    print_info "Sollen Quotas ${BOLD}rekursiv${NC} (inkl. aller Unterverzeichnisse) gelöscht werden?"
+    echo
+    
+    if confirm_action "Rekursiv löschen?"; then
+        DELETE_RECURSIVE="yes"
+        print_success "Rekursives Löschen aktiviert"
+    else
+        DELETE_RECURSIVE="no"
+        print_info "Nur direkte Unterverzeichnisse werden berücksichtigt"
+    fi
+    
+    echo
+    
+    # Sollen auch die Verzeichnisse gelöscht werden?
+    print_warning "Sollen die Verzeichnisse nach dem Löschen der Quotas auch gelöscht werden?"
+    print_info "Standard: NEIN - nur Quotas werden gelöscht, Verzeichnisse bleiben bestehen"
+    echo
+    
+    if confirm_action "Verzeichnisse auch löschen?"; then
+        DELETE_DIRECTORIES="yes"
+        print_warning "Verzeichnisse werden NACH dem Löschen der Quotas gelöscht!"
+    else
+        DELETE_DIRECTORIES="no"
+        print_success "Verzeichnisse bleiben bestehen"
+    fi
+    
+    press_any_key
+}
+
+show_delete_preview() {
+    print_header
+    print_step "Schritt 3: Vorschau"
+    
+    print_info "Suche nach Quotas unter: $DELETE_PATH"
+    echo
+    
+    # Quotas finden
+    local dir_quotas=0
+    local user_quotas=0
+    
+    if [ "$DELETE_TYPES" = "directory" ] || [ "$DELETE_TYPES" = "both" ]; then
+        dir_quotas=$(isi quota list 2>/dev/null | grep -c "^directory.*$DELETE_PATH")
+    fi
+    
+    if [ "$DELETE_TYPES" = "user" ] || [ "$DELETE_TYPES" = "both" ]; then
+        user_quotas=$(isi quota list 2>/dev/null | grep -c "^user.*$DELETE_PATH")
+    fi
+    
+    local total_quotas=$((dir_quotas + user_quotas))
+    
+    echo -e "${WHITE}${BOLD}Gefundene Quotas:${NC}"
+    echo -e "${CYAN}========================================================================${NC}"
+    
+    if [ "$DELETE_TYPES" = "directory" ] || [ "$DELETE_TYPES" = "both" ]; then
+        printf "%-30s ${WHITE}%d${NC}\n" "Directory Quotas:" "$dir_quotas"
+    fi
+    
+    if [ "$DELETE_TYPES" = "user" ] || [ "$DELETE_TYPES" = "both" ]; then
+        printf "%-30s ${WHITE}%d${NC}\n" "User Quotas:" "$user_quotas"
+    fi
+    
+    echo -e "${CYAN}------------------------------------------------------------------------${NC}"
+    printf "%-30s ${WHITE}${BOLD}%d${NC}\n" "GESAMT:" "$total_quotas"
+    echo -e "${CYAN}========================================================================${NC}"
+    
+    echo
+    
+    if [ $total_quotas -eq 0 ]; then
+        print_warning "Keine Quotas gefunden!"
+        echo
+        if ! confirm_action "Trotzdem fortfahren?"; then
+            print_info "Abgebrochen."
+            exit 0
+        fi
+    else
+        print_info "Beispiel der zu löschenden Quotas (erste 10):"
+        echo
+        
+        if [ "$DELETE_TYPES" = "directory" ] || [ "$DELETE_TYPES" = "both" ]; then
+            isi quota list 2>/dev/null | grep "^directory.*$DELETE_PATH" | head -n 10
+        fi
+        
+        if [ "$DELETE_TYPES" = "user" ] || [ "$DELETE_TYPES" = "both" ]; then
+            isi quota list 2>/dev/null | grep "^user.*$DELETE_PATH" | head -n 10
+        fi
+        
+        echo
+    fi
+    
+    press_any_key
+}
+
+confirm_delete() {
+    print_header
+    print_step "Schritt 4: Bestätigung"
+    
+    echo -e "${RED}${BOLD}WARNUNG: Diese Aktion kann nicht rückgängig gemacht werden!${NC}"
+    echo
+    echo -e "${WHITE}${BOLD}Zusammenfassung:${NC}"
+    echo -e "${CYAN}========================================================================${NC}"
+    printf "%-30s ${WHITE}%s${NC}\n" "Pfad:" "$DELETE_PATH"
+    
+    if [ "$DELETE_TYPES" = "directory" ]; then
+        printf "%-30s ${WHITE}%s${NC}\n" "Quota-Typen:" "Directory"
+    elif [ "$DELETE_TYPES" = "user" ]; then
+        printf "%-30s ${WHITE}%s${NC}\n" "Quota-Typen:" "User"
+    else
+        printf "%-30s ${WHITE}%s${NC}\n" "Quota-Typen:" "Directory + User"
+    fi
+    
+    if [ "$DELETE_RECURSIVE" = "yes" ]; then
+        printf "%-30s ${WHITE}%s${NC}\n" "Modus:" "Rekursiv (alle Unterverzeichnisse)"
+    else
+        printf "%-30s ${WHITE}%s${NC}\n" "Modus:" "Nur direkte Unterverzeichnisse"
+    fi
+    
+    if [ "$DELETE_DIRECTORIES" = "yes" ]; then
+        printf "%-30s ${RED}%s${NC}\n" "Verzeichnisse löschen:" "JA - Verzeichnisse werden gelöscht!"
+    else
+        printf "%-30s ${GREEN}%s${NC}\n" "Verzeichnisse löschen:" "NEIN - Verzeichnisse bleiben"
+    fi
+    echo -e "${CYAN}========================================================================${NC}"
+    
+    echo
+    print_warning "Bist du dir absolut sicher?"
+    echo
+    
+    read -p "$(echo -e ${RED}Tippe \"DELETE\" um zu bestätigen:${NC} )" confirmation
+    
+    if [ "$confirmation" != "DELETE" ]; then
+        print_warning "Abgebrochen! (Eingabe war nicht \"DELETE\")"
+        exit 0
+    fi
+    
+    print_success "Bestätigung erhalten - starte Löschvorgang..."
+    press_any_key
+}
+
+execute_quota_deletion() {
+    print_header
+    print_step "Löschvorgang"
+    
+    print_info "Lösche Quotas..."
+    echo
+    
+    local deleted_count=0
+    local failed_count=0
+    local start_time=$(date +%s)
+    
+    # Temporäre Dateien für Quota-Liste und Verzeichnis-Liste
+    local quota_list="/tmp/quota_delete_list_$$.txt"
+    local dir_list="/tmp/dir_delete_list_$$.txt"
+    
+    # Quotas sammeln
+    if [ "$DELETE_TYPES" = "directory" ]; then
+        isi quota list 2>/dev/null | grep "^directory.*$DELETE_PATH" | awk '{print $3}' > "$quota_list"
+    elif [ "$DELETE_TYPES" = "user" ]; then
+        isi quota list 2>/dev/null | grep "^user.*$DELETE_PATH" | awk '{print $3}' > "$quota_list"
+    else
+        isi quota list 2>/dev/null | grep "^\(directory\|user\).*$DELETE_PATH" | awk '{print $3}' > "$quota_list"
+    fi
+    
+    # Verzeichnisse merken (falls sie gelöscht werden sollen)
+    if [ "$DELETE_DIRECTORIES" = "yes" ]; then
+        if [ "$DELETE_TYPES" = "directory" ] || [ "$DELETE_TYPES" = "both" ]; then
+            isi quota list 2>/dev/null | grep "^directory.*$DELETE_PATH" | awk '{print $3}' > "$dir_list"
+        fi
+    fi
+    
+    local total=$(wc -l < "$quota_list")
+    local current=0
+    
+    if [ $total -eq 0 ]; then
+        print_warning "Keine Quotas zum Löschen gefunden!"
+        rm -f "$quota_list" "$dir_list"
+        return
+    fi
+    
+    print_info "Gefunden: $total Quotas"
+    echo
+    
+    # SCHRITT 1: Quotas löschen (ZUERST!)
+    print_info "Schritt 1: Lösche Quotas..."
+    echo
+    
+    while IFS= read -r quota_path; do
+        ((current++))
+        
+        if isi quota delete "$quota_path" 2>/dev/null; then
+            ((deleted_count++))
+        else
+            print_error "Fehler beim Löschen der Quota: $quota_path"
+            ((failed_count++))
+        fi
+        
+        # Fortschritt anzeigen
+        if [ $((current % 10)) -eq 0 ] || [ $current -eq $total ]; then
+            local percent=$((current * 100 / total))
+            local elapsed=$(($(date +%s) - start_time))
+            printf "\r${CYAN}Fortschritt:${NC} [%-50s] ${WHITE}%d%%${NC} ${CYAN}(%d/%d)${NC} ${YELLOW}Zeit: %ds${NC}" \
+                "$(printf '#%.0s' $(seq 1 $((percent / 2))))" \
+                "$percent" "$current" "$total" "$elapsed"
+        fi
+    done < "$quota_list"
+    
+    echo
+    echo
+    
+    rm -f "$quota_list"
+    
+    # SCHRITT 2: Verzeichnisse löschen (NUR wenn gewünscht und NACH den Quotas!)
+    local deleted_dirs=0
+    local failed_dirs=0
+    
+    if [ "$DELETE_DIRECTORIES" = "yes" ] && [ -f "$dir_list" ]; then
+        local dir_total=$(wc -l < "$dir_list")
+        
+        if [ $dir_total -gt 0 ]; then
+            echo
+            print_info "Schritt 2: Lösche Verzeichnisse..."
+            echo
+            
+            local dir_current=0
+            while IFS= read -r dir_path; do
+                ((dir_current++))
+                
+                if [ -d "$dir_path" ]; then
+                    if rm -rf "$dir_path" 2>/dev/null; then
+                        ((deleted_dirs++))
+                    else
+                        print_error "Fehler beim Löschen des Verzeichnisses: $dir_path"
+                        ((failed_dirs++))
+                    fi
+                else
+                    print_warning "Verzeichnis existiert nicht mehr: $dir_path"
+                fi
+                
+                # Fortschritt anzeigen
+                if [ $((dir_current % 10)) -eq 0 ] || [ $dir_current -eq $dir_total ]; then
+                    local dir_percent=$((dir_current * 100 / dir_total))
+                    printf "\r${CYAN}Fortschritt:${NC} [%-50s] ${WHITE}%d%%${NC} ${CYAN}(%d/%d)${NC}" \
+                        "$(printf '#%.0s' $(seq 1 $((dir_percent / 2))))" \
+                        "$dir_percent" "$dir_current" "$dir_total"
+                fi
+            done < "$dir_list"
+            
+            echo
+            echo
+        fi
+    fi
+    
+    rm -f "$dir_list"
+    
+    local end_time=$(date +%s)
+    local duration=$((end_time - start_time))
+    
+    echo -e "${GREEN}${BOLD}====================================================================${NC}"
+    echo -e "${GREEN}${BOLD}                    Löschvorgang abgeschlossen!                     ${NC}"
+    echo -e "${GREEN}${BOLD}====================================================================${NC}"
+    echo
+    
+    print_success "Gelöschte Quotas: $deleted_count"
+    if [ $failed_count -gt 0 ]; then
+        print_error "Fehlgeschlagene Quotas: $failed_count"
+    fi
+    
+    if [ "$DELETE_DIRECTORIES" = "yes" ]; then
+        echo
+        print_success "Gelöschte Verzeichnisse: $deleted_dirs"
+        if [ $failed_dirs -gt 0 ]; then
+            print_error "Fehlgeschlagene Verzeichnisse: $failed_dirs"
+        fi
+    fi
+    
+    echo
+    print_success "Gesamtdauer: ${duration}s"
+    
+    if [ $deleted_count -gt 0 ]; then
+        local avg_time=$((duration * 1000 / deleted_count))
+        print_info "Durchschnitt Quotas: ${avg_time}ms pro Quota"
+    fi
+    
+    echo
+}
+
+delete_quotas_wizard() {
+    get_delete_path
+    get_delete_options
+    show_delete_preview
+    confirm_delete
+    execute_quota_deletion
 }
 
 ################################################################################
 # Hauptprogramm
 ################################################################################
 
+select_operation_mode() {
+    print_header
+    print_step "Willkommen zum PowerScale Quota Wizard!"
+    
+    echo -e "${WHITE}${BOLD}Was möchtest du tun?${NC}"
+    echo
+    echo -e "${GREEN}1)${NC} Verzeichnisse mit Quotas ${GREEN}ERSTELLEN${NC}"
+    echo -e "${RED}2)${NC} Quotas ${RED}LÖSCHEN${NC} (rekursiv)"
+    echo -e "${YELLOW}3)${NC} Wizard beenden"
+    echo
+    
+    while true; do
+        read -p "$(echo -e ${WHITE}${ARROW} Deine Wahl [${GREEN}1${WHITE}]:${NC} )" choice
+        
+        if [ -z "$choice" ]; then
+            choice=1
+        fi
+        
+        case $choice in
+            1)
+                print_success "Modus: Verzeichnisse ERSTELLEN"
+                return 0
+                ;;
+            2)
+                print_success "Modus: Quotas LÖSCHEN"
+                return 1
+                ;;
+            3)
+                print_info "Wizard wird beendet..."
+                exit 0
+                ;;
+            *)
+                print_error "Ungültige Auswahl! Bitte 1, 2 oder 3 eingeben."
+                ;;
+        esac
+        echo
+    done
+}
+
 main() {
     # System-Überprüfung
     check_system
     
-    # Wizard durchlaufen (Base Path zuerst!)
-    get_base_path
-    get_prefix
-    get_count
-    get_owner_settings
-    get_quota_configuration
-    get_quota_advanced_options
-    get_parallel_settings
+    # Betriebs-Modus wählen
+    select_operation_mode
+    operation_mode=$?
     
-    # Zusammenfassung und Bestätigung
-    show_summary
+    press_any_key
     
-    if ! confirm_action "Möchtest du die Erstellung jetzt starten?"; then
-        print_warning "Abgebrochen!"
-        exit 0
+    if [ $operation_mode -eq 0 ]; then
+        # ERSTELLEN-Modus
+        # Wizard durchlaufen (Base Path zuerst!)
+        get_base_path
+        get_prefix
+        get_count
+        get_owner_settings
+        get_quota_configuration
+        get_quota_advanced_options
+        get_parallel_settings
+        
+        # Zusammenfassung und Bestätigung
+        show_summary
+        
+        if ! confirm_action "Möchtest du die Erstellung jetzt starten?"; then
+            print_warning "Abgebrochen!"
+            exit 0
+        fi
+        
+        # Ausführung
+        execute_creation
+        
+        # Optional: Quota-Übersicht
+        show_quota_overview
+    else
+        # LÖSCHEN-Modus
+        delete_quotas_wizard
     fi
-    
-    # Ausführung
-    execute_creation
-    
-    # Optional: Quota-Übersicht
-    show_quota_overview
     
     echo
     print_success "Wizard abgeschlossen!"

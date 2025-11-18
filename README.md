@@ -1,12 +1,19 @@
 # PowerScale/Isilon Quota Wizard
 
-Ein interaktiver Shell-Wizard zur automatisierten Erstellung von Verzeichnissen mit Quotas auf Dell PowerScale (ehemals Isilon) Storage-Systemen.
+Ein interaktiver Shell-Wizard zur automatisierten Erstellung und Verwaltung von Verzeichnissen mit Quotas auf Dell PowerScale (ehemals Isilon) Storage-Systemen.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Shell Script](https://img.shields.io/badge/Shell-Bash-green.svg)](https://www.gnu.org/software/bash/)
 [![PowerScale](https://img.shields.io/badge/PowerScale-OneFS-blue.svg)](https://www.dell.com/powerscale)
 
 ## 🎯 Features
+
+### ✨ Zwei Betriebsmodi
+
+- ✅ **ERSTELLEN-Modus** - Erstelle Verzeichnisse mit Quotas
+- ✅ **LÖSCHEN-Modus** - Lösche Quotas rekursiv (optional mit Verzeichnissen)
+
+### 📁 Erstellen-Modus
 
 - ✅ **Interaktiver Wizard** mit Schritt-für-Schritt-Anleitung
 - ✅ **Automatische Pfad-Erstellung** falls nicht vorhanden
@@ -20,7 +27,21 @@ Ein interaktiver Shell-Wizard zur automatisierten Erstellung von Verzeichnissen 
 - ✅ **Parallele Verarbeitung** für maximale Performance
 - ✅ **Validierung** aller Eingaben mit hilfreichen Fehlermeldungen
 - ✅ **Fortschrittsanzeige** mit Zeitschätzung
+
+### 🗑️ Löschen-Modus (NEU!)
+
+- ✅ **Rekursives Quota-Löschen** für Verzeichnisstrukturen
+- ✅ **Flexible Auswahl** - Directory, User oder beide Quota-Typen
+- ✅ **Sichere Vorschau** - Zeigt was gelöscht wird vor der Ausführung
+- ✅ **Optionales Verzeichnis-Löschen** - Verzeichnisse können mit gelöscht werden
+- ✅ **Bestätigung erforderlich** - User muss "DELETE" tippen
+- ✅ **Korrekte Reihenfolge** - Quotas werden VOR Verzeichnissen gelöscht
+
+### 🎨 User Experience
+
 - ✅ **Farbige Ausgabe** mit Unicode-Symbolen für bessere Lesbarkeit
+- ✅ **ASCII-kompatibel** - Funktioniert auf allen Terminals
+- ✅ **Detaillierte Statistiken** - Performance-Metriken nach Abschluss
 - ✅ **Quota-Übersicht** am Ende mit nützlichen Kommandos
 
 ## 📋 Voraussetzungen
@@ -79,7 +100,32 @@ chmod +x /root/isilon_quota_wizard.sh
 ./isilon_quota_wizard.sh
 ```
 
-### Wizard-Schritte
+### Betriebs-Modus wählen
+
+Beim Start wirst du gefragt, was du tun möchtest:
+
+```
+========================================================================
+        PowerScale/Isilon Quota Wizard v1.0                         
+
+        Copyright © 2024 Christopher Siebert
+        christopher.siebert@concat.de
+========================================================================
+
+Was möchtest du tun?
+
+1) Verzeichnisse mit Quotas ERSTELLEN
+2) Quotas LÖSCHEN (rekursiv)
+3) Wizard beenden
+
+→ Deine Wahl [1]:
+```
+
+---
+
+## 📁 ERSTELLEN-Modus
+
+### Wizard-Schritte (Erstellen)
 
 Der Wizard führt dich durch folgende Schritte:
 
@@ -124,13 +170,59 @@ Der Wizard führt dich durch folgende Schritte:
    - Übersicht aller Einstellungen
    - Bestätigung vor Start
 
+---
+
+## 🗑️ LÖSCHEN-Modus
+
+### Wizard-Schritte (Löschen)
+
+Der Lösch-Wizard führt dich durch folgende Schritte:
+
+1. **Pfad auswählen**
+   - Eingabe des Basis-Pfads dessen Quotas gelöscht werden sollen
+   - Validierung (muss mit /ifs beginnen und existieren)
+
+2. **Quota-Typ auswählen**
+   - **Directory Quotas** - Nur Directory-Quotas löschen
+   - **User Quotas** - Nur User-Quotas löschen
+   - **Beide** - Directory + User Quotas löschen
+   - **Rekursiv** - Inkl. aller Unterverzeichnisse
+   - **Verzeichnisse löschen** - Optional: Verzeichnisse nach Quota-Löschung auch entfernen
+
+3. **Vorschau**
+   - Zeigt Anzahl gefundener Quotas
+   - Aufschlüsselung nach Typ (Directory/User)
+   - Beispiel-Liste der zu löschenden Quotas
+   - Möglichkeit zum Abbruch
+
+4. **Bestätigung**
+   - Zusammenfassung aller Einstellungen
+   - **Sicherheits-Check:** User muss "DELETE" tippen
+   - Warnung über Unwiderruflichkeit
+
+5. **Ausführung**
+   - **Schritt 1:** Quotas werden gelöscht (ZUERST!)
+   - **Schritt 2:** Verzeichnisse werden gelöscht (falls gewählt)
+   - Fortschrittsanzeige mit Statistiken
+
+### ⚠️ Wichtige Hinweise zum Löschen
+
+- **Reihenfolge ist entscheidend:** Quotas werden IMMER vor Verzeichnissen gelöscht
+- **Standard-Verhalten:** Nur Quotas werden gelöscht, Verzeichnisse bleiben bestehen
+- **Optional:** Verzeichnisse können mit gelöscht werden (nach den Quotas)
+- **Unwiderruflich:** Gelöschte Quotas/Verzeichnisse können nicht wiederhergestellt werden
+- **Sicherheit:** User muss explizit "DELETE" tippen (nicht nur j/n)
+
+---
+
 ## 💡 Beispiele
 
-### Beispiel 1: Einfache Verwendung
+### Beispiel 1: Verzeichnisse erstellen
 
 1000 Verzeichnisse mit 1MB Hard Quota:
 
 ```
+Modus: ERSTELLEN
 Basis-Pfad: /ifs/data/testdirs
 Präfix: project
 Anzahl: 1000
@@ -150,6 +242,7 @@ Hard Threshold: 1M
 Projekt-Verzeichnisse mit Warnschwelle:
 
 ```
+Modus: ERSTELLEN
 Basis-Pfad: /ifs/projects
 Präfix: proj
 Anzahl: 100
@@ -163,11 +256,56 @@ Grace Period: 604800 (7 Tage)
 User-Verzeichnisse mit korrektem Owner:
 
 ```
+Modus: ERSTELLEN
 Basis-Pfad: /ifs/home
 Präfix: user
 Anzahl: 50
 Owner: testuser:users
 Hard Threshold: 20G
+```
+
+### Beispiel 4: Nur Quotas löschen (Verzeichnisse bleiben)
+
+```
+Modus: LÖSCHEN
+Pfad: /ifs/data/testdirs
+Quota-Typen: Directory
+Rekursiv: Ja
+Verzeichnisse löschen: NEIN
+
+Ergebnis:
+✓ Quotas gelöscht: 1000
+✓ Verzeichnisse bleiben bestehen (ohne Quota)
+```
+
+### Beispiel 5: Quotas UND Verzeichnisse löschen
+
+```
+Modus: LÖSCHEN
+Pfad: /ifs/data/testdirs
+Quota-Typen: Directory
+Rekursiv: Ja
+Verzeichnisse löschen: JA
+
+Ergebnis:
+✓ Quotas gelöscht: 1000
+✓ Verzeichnisse gelöscht: 1000
+✓ Komplettes Cleanup durchgeführt
+```
+
+### Beispiel 6: Nur User-Quotas löschen
+
+```
+Modus: LÖSCHEN
+Pfad: /ifs/home
+Quota-Typen: User
+Rekursiv: Ja
+Verzeichnisse löschen: NEIN
+
+Ergebnis:
+✓ User-Quotas gelöscht: 50
+✓ Directory-Quotas bleiben bestehen
+✓ Verzeichnisse bleiben bestehen
 ```
 
 ## 🔧 Erweiterte Konfiguration
@@ -240,11 +378,13 @@ isi quota modify /ifs/data/testdirs/dir_0001 --soft-threshold 4M
 # Einzelne Quota löschen
 isi quota delete /ifs/data/testdirs/dir_0001
 
-# Mehrere Quotas löschen (Vorsicht!)
+# Mehrere Quotas löschen (manuell)
 for i in $(seq 1 100); do
   isi quota delete /ifs/data/testdirs/dir_$(printf "%04d" $i)
 done
 ```
+
+**💡 Tipp:** Verwende den **LÖSCHEN-Modus** des Wizards für komfortables und sicheres Löschen vieler Quotas!
 
 ## 🐛 Troubleshooting
 
@@ -272,6 +412,28 @@ done
 - Verwende `isi quota list` direkt um alle Quotas zu sehen
 - Prüfe mit `isi quota view <pfad>` die spezifische Quota
 
+### Problem: Kann Quotas nicht löschen
+
+**Lösung:**
+- Stelle sicher, dass die Quotas existieren: `isi quota list | grep <pfad>`
+- Prüfe Berechtigungen (root oder ausreichende Rechte erforderlich)
+- Bei "Quota does not exist" Fehler: Quota wurde bereits gelöscht oder Pfad ist falsch
+
+### Problem: "Fehler beim Löschen" im Lösch-Modus
+
+**Lösung:**
+- Quotas müssen VOR Verzeichnissen gelöscht werden (Script macht das automatisch)
+- Falls Verzeichnis bereits manuell gelöscht wurde, kann Quota nicht mehr gelöscht werden
+- Prüfe mit `isi quota list` ob Quota noch existiert
+
+### Problem: Verzeichnisse können nicht gelöscht werden
+
+**Lösung:**
+- Stelle sicher, dass Quotas zuerst gelöscht wurden
+- Prüfe ob Verzeichnis leer ist (oder verwende `rm -rf`)
+- Prüfe Berechtigungen auf Verzeichnis
+- Verzeichnisse können Inhalte haben, die das Löschen verhindern
+
 ## 🤝 Beitragen
 
 Beiträge sind willkommen! Bitte beachte folgende Richtlinien:
@@ -298,6 +460,16 @@ ssh root@<test-powerscale> "/root/isilon_quota_wizard.sh"
 ```
 
 ## 📝 Changelog
+
+### Version 1.1 (November 2024)
+- ✨ **NEU:** Löschen-Modus für rekursives Quota-Löschen
+- ✨ Auswahl zwischen Directory, User oder beiden Quota-Typen
+- ✨ Optionales Verzeichnis-Löschen nach Quota-Entfernung
+- ✨ Sichere Vorschau vor Löschung
+- ✨ Bestätigung mit "DELETE"-Eingabe erforderlich
+- 🐛 Korrigierte Lösch-Reihenfolge (Quotas VOR Verzeichnissen)
+- 🔧 ASCII-kompatible Ausgabe (keine Unicode-Box-Zeichen mehr)
+- 📚 Erweiterte Dokumentation
 
 ### Version 1.0 (November 2024)
 - Initiales Release
