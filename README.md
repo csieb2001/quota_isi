@@ -2,13 +2,34 @@
 
 Ein interaktiver Shell-Wizard zur automatisierten Erstellung und Verwaltung von Verzeichnissen mit Quotas auf Dell PowerScale (ehemals Isilon) Storage-Systemen.
 
+**Verfügbar in zwei Versionen:**
+- 🔄 **SSH-Version** (Original): Läuft direkt auf PowerScale Nodes via SSH
+- 🌐 **API-Version** (Neu): Remote-Execution via OneFS REST API mit Basic Authentication
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Shell Script](https://img.shields.io/badge/Shell-Bash-green.svg)](https://www.gnu.org/software/bash/)
 [![PowerScale](https://img.shields.io/badge/PowerScale-OneFS-blue.svg)](https://www.dell.com/powerscale)
+[![API](https://img.shields.io/badge/API-OneFS_REST-orange.svg)](https://developer.dell.com)
 
 ## 🎯 Features
 
-### ✨ Zwei Betriebsmodi
+### 🚀 Zwei Ausführungsversionen
+
+#### 🔄 SSH-Version (`isilon_quota_wizard.sh`)
+- ✅ Läuft direkt auf PowerScale/Isilon Nodes
+- ✅ Verwendet native OneFS CLI (`isi` Kommandos)
+- ✅ ERSTELLEN und LÖSCHEN Modi verfügbar
+- ✅ Vollständige Funktionalität
+
+#### 🌐 API-Version (`isilon_quota_wizard_api.sh`)
+- ✅ **Remote-Execution** - Läuft von jedem System mit Internet/Netzwerk-Zugang
+- ✅ **OneFS REST API** mit Basic Authentication
+- ✅ **Keine SSH-Verbindung** zum PowerScale erforderlich
+- ✅ **Cross-Platform** - Läuft auf Linux, macOS, Windows (WSL)
+- ✅ **Native Bash-Parallelität** - Keine externen Tools erforderlich
+- ✅ Fokus auf ERSTELLEN-Modus (optimiert für API-Operationen)
+
+### ✨ Betriebsmodi (SSH-Version)
 
 - ✅ **ERSTELLEN-Modus** - Erstelle Verzeichnisse mit Quotas
 - ✅ **LÖSCHEN-Modus** - Lösche Quotas rekursiv (optional mit Verzeichnissen)
@@ -46,6 +67,7 @@ Ein interaktiver Shell-Wizard zur automatisierten Erstellung und Verwaltung von 
 
 ## 📋 Voraussetzungen
 
+### 🔄 SSH-Version
 - Dell PowerScale / Isilon mit OneFS
 - Zugriff auf einen Cluster-Node via SSH
 - Ausreichende Berechtigungen für:
@@ -53,14 +75,25 @@ Ein interaktiver Shell-Wizard zur automatisierten Erstellung und Verwaltung von 
   - Quota-Management (`isi quota` Befehle)
   - Optional: `chown` für Owner-Änderungen
 - Bash Shell
+- Optional: GNU Parallel (empfohlen für große Anzahl Verzeichnisse)
 
-### Optional für bessere Performance:
-- GNU Parallel (empfohlen für große Anzahl Verzeichnisse)
-- Falls nicht vorhanden: `xargs` wird als Fallback verwendet
+### 🌐 API-Version
+- Dell PowerScale / Isilon mit OneFS (beliebige Version mit REST API)
+- **Netzwerk-Zugang** zum PowerScale Cluster (Port 8080/HTTPS)
+- **API-Benutzer** mit ausreichenden Berechtigungen:
+  - Namespace API (Verzeichnis-Erstellung)
+  - Quota API (Quota-Management)
+- **Client-System** mit:
+  - Bash Shell
+  - `curl` (HTTP Client)
+  - `jq` (JSON Parser)
+- **Keine SSH-Verbindung** erforderlich!
 
 ## 🚀 Installation
 
-### Methode 1: Direkt auf PowerScale
+### 🔄 SSH-Version Installation
+
+#### Methode 1: Direkt auf PowerScale
 
 ```bash
 # Via SSH auf PowerScale/Isilon Node einloggen
@@ -76,7 +109,7 @@ chmod +x isilon_quota_wizard.sh
 ./isilon_quota_wizard.sh
 ```
 
-### Methode 2: Via Git Clone
+#### Methode 2: Via Git Clone
 
 ```bash
 # Repository klonen
@@ -92,13 +125,65 @@ chmod +x /root/isilon_quota_wizard.sh
 ./isilon_quota_wizard.sh
 ```
 
+### 🌐 API-Version Installation
+
+#### Auf jedem System mit Bash (Linux, macOS, Windows WSL)
+
+```bash
+# Repository klonen
+git clone https://github.com/<your-repo>/isilon-quota-wizard.git
+cd isilon-quota-wizard
+
+# Abhängigkeiten prüfen
+which curl jq || echo "Bitte installieren: curl jq"
+
+# API-Version ausführbar machen
+chmod +x isilon_quota_wizard_api.sh
+
+# Starten (Remote zu PowerScale)
+./isilon_quota_wizard_api.sh
+```
+
+#### Abhängigkeiten installieren
+
+**macOS (Homebrew):**
+```bash
+brew install curl jq
+```
+
+**Ubuntu/Debian:**
+```bash
+sudo apt install curl jq
+```
+
+**CentOS/RHEL:**
+```bash
+sudo yum install curl jq
+```
+
+**Windows WSL:**
+```bash
+sudo apt update && sudo apt install curl jq
+```
+
 ## 📖 Verwendung
 
-### Wizard starten
+### SSH-Version starten
 
 ```bash
 ./isilon_quota_wizard.sh
 ```
+
+### API-Version starten
+
+```bash
+./isilon_quota_wizard_api.sh
+```
+
+**Eingaben für API-Version:**
+- **Cluster IP/Hostname**: IP-Adresse oder Hostname des PowerScale Clusters
+- **Username**: API-Benutzer (z.B. `root` oder spezieller API-User)
+- **Password**: Passwort des API-Benutzers
 
 ### Betriebs-Modus wählen
 
@@ -330,6 +415,7 @@ Ergebnis:
 
 ### Parallele Verarbeitung
 
+#### SSH-Version (mit GNU Parallel)
 Empfohlene Anzahl paralleler Jobs je nach Anzahl Verzeichnisse:
 
 - 1-100 Verzeichnisse: 5 Jobs
@@ -337,8 +423,23 @@ Empfohlene Anzahl paralleler Jobs je nach Anzahl Verzeichnisse:
 - 1000-10000 Verzeichnisse: 15-20 Jobs
 - 10000+ Verzeichnisse: 20-30 Jobs
 
+#### API-Version (native Bash Background-Jobs)
+Da jeder API-Call über das Netzwerk läuft, können mehr parallele Jobs verwendet werden:
+
+- 1-100 Verzeichnisse: 10 Jobs
+- 100-1000 Verzeichnisse: 20 Jobs (Standard)
+- 1000-10000 Verzeichnisse: 30-40 Jobs
+- 10000+ Verzeichnisse: 40-50 Jobs
+
+**Vorteile der API-Version:**
+- ✅ Keine Abhängigkeit von GNU Parallel
+- ✅ Native Bash Background-Jobs (`&` und `wait`)
+- ✅ Funktioniert auf jedem System
+- ✅ Bessere Netzwerk-Parallelität für API-Calls
+
 ## 📊 Performance
 
+### SSH-Version (Lokale OneFS CLI)
 Typische Durchlaufzeiten (abhängig von Cluster-Last):
 
 | Anzahl Verzeichnisse | Sequentiell | Parallel (10 Jobs) |
@@ -346,6 +447,21 @@ Typische Durchlaufzeiten (abhängig von Cluster-Last):
 | 100 | ~20s | ~3-5s |
 | 1000 | ~3-4min | ~20-30s |
 | 10000 | ~30-40min | ~3-5min |
+
+### API-Version (Remote OneFS REST API)
+Typische Durchlaufzeiten (abhängig von Netzwerk-Latenz und Cluster-Last):
+
+| Anzahl Verzeichnisse | Sequentiell | Parallel (20 Jobs) |
+|---------------------|-------------|-------------------|
+| 100 | ~40-60s | ~5-10s |
+| 1000 | ~7-10min | ~30-60s |
+| 10000 | ~70-100min | ~5-10min |
+
+**Faktoren für API-Performance:**
+- ✅ **Netzwerk-Latenz**: Je näher zum Cluster, desto schneller
+- ✅ **Parallelität**: API-Version kann höhere Parallelität nutzen
+- ✅ **Cluster-Load**: API teilt sich Ressourcen mit anderen API-Clients
+- ✅ **Basic Auth**: Sehr effizient, keine Session-Overhead
 
 ## 🛠️ Manuelle Quota-Verwaltung
 
@@ -461,8 +577,19 @@ ssh root@<test-powerscale> "/root/isilon_quota_wizard.sh"
 
 ## 📝 Changelog
 
+### Version 2.0 (November 2024)
+- 🚀 **NEU:** API-Version (`isilon_quota_wizard_api.sh`)
+- 🌐 **Remote-Execution** via OneFS REST API
+- 🔐 **Basic Authentication** - Keine Session-Management nötig
+- 🖥️ **Cross-Platform** - Läuft auf Linux, macOS, Windows WSL
+- ⚡ **Native Bash-Parallelität** - Keine GNU Parallel Abhängigkeit
+- 📡 **Netzwerk-optimiert** - Höhere Parallelität für API-Calls
+- 🛠️ **macOS-kompatibel** - Korrekte `head`/`sed` Verwendung
+- 📋 **JSON-Schema konform** - Nach offizieller Dell OneFS API
+- 🔧 Verbesserte Fehlerbehandlung und HTTP-Status-Codes
+
 ### Version 1.1 (November 2024)
-- ✨ **NEU:** Löschen-Modus für rekursives Quota-Löschen
+- ✨ **NEU:** Löschen-Modus für rekursives Quota-Löschen (SSH-Version)
 - ✨ Auswahl zwischen Directory, User oder beiden Quota-Typen
 - ✨ Optionales Verzeichnis-Löschen nach Quota-Entfernung
 - ✨ Sichere Vorschau vor Löschung
@@ -472,11 +599,11 @@ ssh root@<test-powerscale> "/root/isilon_quota_wizard.sh"
 - 📚 Erweiterte Dokumentation
 
 ### Version 1.0 (November 2024)
-- Initiales Release
+- Initiales Release (SSH-Version)
 - Interaktiver Wizard mit 8 Schritten
 - Umfassende Quota-Konfiguration
 - Owner-Management
-- Parallele Verarbeitung
+- Parallele Verarbeitung mit GNU Parallel
 - Automatische Validierung
 
 ## 📄 Lizenz
