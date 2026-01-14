@@ -59,7 +59,6 @@ QUOTA_CONTAINER="true"  # Directory Quota (true) oder User/Group Quota (false)
 # Performance-Einstellungen
 PARALLEL_JOBS=10
 USE_PARALLEL="n"
-OUTPUT_MODE="compact"
 
 ################################################################################
 # Hilfsfunktionen
@@ -564,30 +563,35 @@ get_parallel_settings() {
 
     echo -e "${WHITE}Verarbeitungsmodus wählen:${NC}"
     echo -e "${WHITE}1)${NC} Sequenziell (ein Verzeichnis nach dem anderen)"
-    echo -e "${WHITE}2)${NC} Parallel (mehrere Verzeichnisse gleichzeitig mit Background-Jobs)"
+    echo -e "${WHITE}2)${NC} Parallel (mehrere Verzeichnisse gleichzeitig)"
     echo
 
-    read -p "$(echo -e ${WHITE}${ARROW} Auswahl [${GREEN}1${WHITE}]:${NC} )" input
-    case $input in
-        2)
-            USE_PARALLEL="y"
-            echo
-            print_info "Parallele Verarbeitung aktiviert (native Bash Background-Jobs)"
-            while true; do
-                read -p "$(echo -e ${WHITE}${ARROW} Anzahl parallele Jobs [${GREEN}$PARALLEL_JOBS${WHITE}]:${NC} )" jobs_input
-                if [ -z "$jobs_input" ]; then jobs_input=$PARALLEL_JOBS; fi
-                if validate_number "$jobs_input" 1 50; then
-                    PARALLEL_JOBS=$jobs_input
-                    print_success "Parallele Jobs: $PARALLEL_JOBS"
-                    break
-                fi
-            done
-            ;;
-        *)
-            USE_PARALLEL="n"
-            print_success "Sequenzielle Verarbeitung gewählt"
-            ;;
-    esac
+    if [ "$PARALLEL_AVAILABLE" = true ]; then
+        read -p "$(echo -e ${WHITE}${ARROW} Auswahl [${GREEN}1${WHITE}]:${NC} )" input
+        case $input in
+            2)
+                USE_PARALLEL="y"
+                echo
+                print_info "Parallele Verarbeitung aktiviert"
+                while true; do
+                    read -p "$(echo -e ${WHITE}${ARROW} Anzahl parallele Jobs [${GREEN}$PARALLEL_JOBS${WHITE}]:${NC} )" jobs_input
+                    if [ -z "$jobs_input" ]; then jobs_input=$PARALLEL_JOBS; fi
+                    if validate_number "$jobs_input" 1 50; then
+                        PARALLEL_JOBS=$jobs_input
+                        print_success "Parallele Jobs: $PARALLEL_JOBS"
+                        break
+                    fi
+                done
+                ;;
+            *)
+                USE_PARALLEL="n"
+                print_success "Sequenzielle Verarbeitung gewählt"
+                ;;
+        esac
+    else
+        print_warning "GNU Parallel nicht verfügbar - nur sequenzielle Verarbeitung möglich"
+        USE_PARALLEL="n"
+    fi
 
     press_any_key
 }
@@ -637,12 +641,12 @@ create_dir_with_quota_api() {
     local dir_name="${PREFIX}_$(printf "%04d" $i)"
     local dir_path="${BASE_PATH}/${dir_name}"
 
-    # 1. Create Directory via API
+    # 1. Create Directory
     local mkdir_response=$(api_request "PUT" "/namespace${dir_path}" "" "x-isi-ifs-target-type: container")
     local mkdir_http_code=$(echo "$mkdir_response" | tail -n1)
 
     if [ "$mkdir_http_code" != "200" ] && [ "$mkdir_http_code" != "201" ] && [ "$mkdir_http_code" != "204" ]; then
-        echo "API_MKDIR_ERROR: $dir_name (HTTP $mkdir_http_code)" >&2
+        echo "MKDIR_ERROR: $dir_name (HTTP $mkdir_http_code)"
         return 1
     fi
 
@@ -683,19 +687,17 @@ create_dir_with_quota_api() {
             '.thresholds.advisory = $advisory')
     fi
 
-    # Execute Quota API Call
     local quota_resp=$(api_request "POST" "/platform/1/quota/quotas" "$quota_json")
     local quota_http_code=$(echo "$quota_resp" | tail -n1)
     local quota_body=$(echo "$quota_resp" | sed '$d')
 
     if [ "$quota_http_code" = "201" ] || [ "$quota_http_code" = "200" ]; then
-        echo "API_SUCCESS: $dir_name" >&1
         return 0
     else
-        echo "API_QUOTA_ERROR: $dir_name (HTTP $quota_http_code)" >&2
+        echo "QUOTA_ERROR: $dir_name (HTTP $quota_http_code)"
         if [ -n "$quota_body" ] && command -v jq >/dev/null 2>&1; then
             local err_msg=$(echo "$quota_body" | jq -r '.errors[0].message // "Unknown error"' 2>/dev/null)
-            echo "API_ERROR_MSG: $dir_name - $err_msg" >&2
+            echo "QUOTA_ERROR_MSG: $err_msg"
         fi
         return 1
     fi
@@ -709,369 +711,45 @@ execute_creation() {
     local success=0
     local failed=0
 
-    if [ "$USE_PARALLEL" = "y" ]; then
+    if [ "$USE_PARALLEL" = "y" ] && [ "$PARALLEL_AVAILABLE" = true ]; then
+        # Export all necessary variables and functions for parallel execution
+        export -f create_dir_with_quota_api size_to_bytes api_request check_api_error
+        export BASE_PATH PREFIX QUOTA_HARD QUOTA_SOFT QUOTA_ADVISORY QUOTA_SOFT_GRACE
+        export QUOTA_THRESHOLDS_ON QUOTA_INCLUDE_SNAPSHOTS API_BASE_URL
+        export API_USER API_PASSWORD
+
         print_info "Starte parallele Ausführung mit $PARALLEL_JOBS Jobs..."
-        echo
 
-        # Temporäre Verzeichnisse für Tracking und Output-Sammlung
-        local temp_dir="/tmp/quota_api_$$"
-        mkdir -p "$temp_dir"
-        mkdir -p "$temp_dir/logs"
+        # Use parallel with proper error handling
+        local result_file="/tmp/quota_results_$$"
+        seq 1 $COUNT | parallel --bar -j $PARALLEL_JOBS "create_dir_with_quota_api {} && echo SUCCESS || echo FAILED" > "$result_file"
 
-        local running_jobs=0
-        local job_pids=()
-        local completed=0
-
-        # Sammle Ergebnisse für sauberen Output
-        local output_file="$temp_dir/output.txt"
-        > "$output_file"
-
-        # Fortschritts-Tracker im Hintergrund (nur Statuszeile, keine Details)
-        (
-            while [ $completed -lt $COUNT ]; do
-                local current_success=$(ls "$temp_dir"/success_* 2>/dev/null | wc -l | tr -d ' ')
-                local current_failed=$(ls "$temp_dir"/failed_* 2>/dev/null | wc -l | tr -d ' ')
-                local current_total=$((current_success + current_failed))
-
-                if [ $current_total -gt 0 ]; then
-                    local percent=$((current_total * 100 / COUNT))
-                    local elapsed=$(($(date +%s) - start_time))
-                    local remaining=$((COUNT - current_total))
-                    local eta=0
-                    if [ $current_total -gt 0 ]; then
-                        eta=$((elapsed * remaining / current_total))
-                    fi
-
-                    # Nur einzelne Statuszeile, überschreiben mit \r
-                    printf "\r${CYAN}API Parallel:${NC} [%-25s] ${WHITE}%3d%%${NC} ${CYAN}(%d/%d)${NC} ${GREEN}✓%d${NC} ${RED}✗%d${NC} ${YELLOW}ETA:%dm%ds${NC}  " \
-                        "$(printf '#%.0s' $(seq 1 $((percent / 4))))" \
-                        "$percent" "$current_total" "$COUNT" \
-                        "$current_success" "$current_failed" \
-                        "$((eta / 60))" "$((eta % 60))"
-                fi
-                sleep 0.5
-            done
-        ) &
-        local progress_pid=$!
-
-        # Worker-Funktion
-        process_worker() {
-            local worker_id=$1
-            local start_idx=$2
-            local end_idx=$3
-            local worker_log="$temp_dir/logs/worker_${worker_id}.log"
-
-            for i in $(seq $start_idx $end_idx); do
-                [ $i -gt $COUNT ] && break
-
-                local dir_name="${PREFIX}_$(printf "%04d" $i)"
-
-                # Führe Aktion aus und sammle Ergebnis
-                if create_dir_with_quota_api "$i" >/dev/null 2>&1; then
-                    touch "$temp_dir/success_$i"
-                    echo "SUCCESS:$i:$dir_name" >> "$worker_log"
-                else
-                    touch "$temp_dir/failed_$i"
-                    echo "FAILED:$i:$dir_name" >> "$worker_log"
-                fi
-            done
-        }
-
-        # Starte Worker für Batch-Verarbeitung
-        local items_per_worker=$(( (COUNT + PARALLEL_JOBS - 1) / PARALLEL_JOBS ))
-
-        for w in $(seq 1 $PARALLEL_JOBS); do
-            local start_idx=$(( (w - 1) * items_per_worker + 1 ))
-            local end_idx=$(( w * items_per_worker ))
-
-            process_worker $w $start_idx $end_idx &
-            job_pids+=($!)
-        done
-
-        # Warte auf alle Worker
-        for pid in "${job_pids[@]}"; do
-            wait $pid
-        done
-        completed=$COUNT
-
-        # Stoppe Progress-Monitor
-        kill $progress_pid 2>/dev/null
-        wait $progress_pid 2>/dev/null
-
-        # Neue Zeile für sauberen Abschluss
-        echo
-        echo
-
-        # Sammle und sortiere alle Ergebnisse für strukturierte Ausgabe
-        echo -e "${CYAN}===== Verarbeitungsergebnisse =====${NC}"
-
-        # Sortiere Logs und zeige Ergebnisse
-        for log in "$temp_dir"/logs/worker_*.log; do
-            [ -f "$log" ] && cat "$log"
-        done | sort -t':' -k2 -n | while IFS=':' read status idx name; do
-            if [ "$status" = "SUCCESS" ]; then
-                printf "${GREEN}✓${NC} %-30s ${CYAN}[#%04d]${NC}\n" "$name" "$idx"
-            else
-                printf "${RED}✗${NC} %-30s ${CYAN}[#%04d]${NC}\n" "$name" "$idx"
-            fi
-        done
-
-        # Finale Statistiken
-        success=$(ls "$temp_dir"/success_* 2>/dev/null | wc -l | tr -d ' ')
-        failed=$(ls "$temp_dir"/failed_* 2>/dev/null | wc -l | tr -d ' ')
-
-        # Cleanup
-        rm -rf "$temp_dir"
-
-        echo
-        echo -e "${GREEN}${BOLD}===== API Parallel-Verarbeitung Abgeschlossen =====${NC}"
+        success=$(grep -c "SUCCESS" "$result_file" 2>/dev/null || echo 0)
+        failed=$(grep -c "FAILED" "$result_file" 2>/dev/null || echo 0)
+        rm -f "$result_file"
     else
-        print_info "Starte sequentielle API-Ausführung..."
-        echo
+        print_info "Starte sequentielle Ausführung..."
 
         for i in $(seq 1 $COUNT); do
-            local dir_name="${PREFIX}_$(printf "%04d" $i)"
-
-            # Aktuelle Operation detailliert anzeigen
-            printf "\r${BLUE}Erstelle via API: $dir_name${NC} ${CYAN}(%d/%d)${NC}" "$i" "$COUNT"
-
-            if create_dir_with_quota_api "$i" >/dev/null 2>&1; then
-                printf "\r${GREEN}${CHECK}${NC} API Erfolgreich: $dir_name ${CYAN}(%d/%d)${NC}\n" "$i" "$COUNT"
+            if create_dir_with_quota_api "$i"; then
                 ((success++))
             else
-                printf "\r${RED}${CROSS}${NC} API Fehler: $dir_name ${CYAN}(%d/%d)${NC}\n" "$i" "$COUNT"
                 ((failed++))
             fi
 
-            # Detaillierter Fortschritt alle 20 Items oder bei wichtigen Meilensteinen
-            if [ $((i % 20)) -eq 0 ] || [ $i -eq $COUNT ] || [ $i -eq 1 ]; then
-                local percent=$((i * 100 / COUNT))
-                local elapsed=$(($(date +%s) - start_time))
-                local remaining=$((COUNT - i))
-                local eta=0
-                if [ $i -gt 0 ]; then
-                    eta=$((elapsed * remaining / i))
-                fi
-
-                echo
-                echo -e "${CYAN}======= API Sequenzielle Verarbeitung =======${NC}"
-                printf "${YELLOW}Status:${NC} [%-20s] ${WHITE}%d%%${NC}\n" "$(printf '#%.0s' $(seq 1 $((percent / 5))))" "$percent"
-                printf "${YELLOW}API-Calls:${NC} ${WHITE}%d${NC} von ${WHITE}%d${NC} abgeschlossen\n" "$i" "$COUNT"
-                printf "${YELLOW}Erfolgreich:${NC} ${GREEN}%d${NC} | ${YELLOW}Fehlgeschlagen:${NC} ${RED}%d${NC}\n" "$success" "$failed"
-                printf "${YELLOW}Zeit:${NC} %dm %ds | ${YELLOW}ETA:${NC} %dm %ds\n" "$((elapsed / 60))" "$((elapsed % 60))" "$((eta / 60))" "$((eta % 60))"
-                printf "${YELLOW}Cluster:${NC} ${WHITE}%s${NC}\n" "$CLUSTER_ADDRESS"
-                echo -e "${CYAN}===========================================${NC}"
-                echo
+            if [ $((i % 10)) -eq 0 ]; then
+                echo -ne "\rFortschritt: $i / $COUNT (Erfolgreich: $success, Fehlgeschlagen: $failed)"
             fi
         done
     fi
 
     local end_time=$(date +%s)
-    local duration=$((end_time - start_time))
-
     echo
-    echo -e "${GREEN}${BOLD}===== API Ausführung Abgeschlossen =====${NC}"
-    printf "${YELLOW}Gesamtdauer:${NC} ${WHITE}%dm %ds${NC}\n" "$((duration / 60))" "$((duration % 60))"
-    printf "${YELLOW}Erfolgreich:${NC} ${GREEN}%d${NC} | ${YELLOW}Fehlgeschlagen:${NC} ${RED}%d${NC}\n" "$success" "$failed"
-    if [ $success -gt 0 ]; then
-        local avg_time=$((duration * 1000 / success))
-        printf "${YELLOW}Durchschnitt:${NC} ${WHITE}%dms${NC} pro erfolgreichem API-Call\n" "$avg_time"
+    print_success "Ausführung beendet in $((end_time - start_time))s"
+    print_success "Erfolgreich: $success"
+    if [ $failed -gt 0 ]; then
+        print_error "Fehlgeschlagen: $failed"
     fi
-    printf "${YELLOW}API-Endpunkt:${NC} ${WHITE}%s${NC}\n" "$API_BASE_URL"
-    echo -e "${GREEN}=========================================${NC}"
-}
-
-################################################################################
-# Quota-Liste Funktionen
-################################################################################
-
-list_all_quotas() {
-    print_header
-    print_step "Quota-Übersicht"
-
-    print_info "Lade alle Quotas vom Cluster..."
-    echo
-
-    # API-Aufruf für alle Quotas mit Pagination
-    local all_quotas=""
-    local resume_token=""
-    local page_count=0
-    local total_quotas=0
-
-    while true; do
-        local api_path="/platform/1/quota/quotas"
-        if [ -n "$resume_token" ]; then
-            # Bei resume darf limit nicht angegeben werden
-            api_path="${api_path}?resume=${resume_token}"
-        else
-            # Nur beim ersten Aufruf limit setzen
-            api_path="${api_path}?limit=1000"
-        fi
-
-        local response=$(api_request "GET" "$api_path")
-        local http_code=$(echo "$response" | tail -n1)
-        local body=$(echo "$response" | sed '$d')
-
-        if [ "$http_code" != "200" ]; then
-            print_error "Fehler beim Abrufen der Quotas (HTTP $http_code)"
-            if [ -n "$body" ] && command -v jq >/dev/null 2>&1; then
-                local err_msg=$(echo "$body" | jq -r '.errors[0].message // "Unknown error"' 2>/dev/null)
-                print_error "Details: $err_msg"
-            fi
-            press_any_key
-            return 1
-        fi
-
-        ((page_count++))
-
-        # Parse mit jq wenn verfügbar
-        if command -v jq >/dev/null 2>&1; then
-            # Zähle Quotas auf dieser Seite
-            local page_quota_count=$(echo "$body" | jq '.quotas | length' 2>/dev/null || echo 0)
-            total_quotas=$((total_quotas + page_quota_count))
-
-            printf "\r${CYAN}Lade Quotas... Seite %d - Bisher %d Quotas gefunden${NC}" "$page_count" "$total_quotas"
-
-            # Sammle Quotas von dieser Seite in temporäre Datei
-            local temp_quota_file="/tmp/quotas_page_${page_count}_$$.json"
-            echo "$body" | jq '.quotas' > "$temp_quota_file" 2>/dev/null
-
-            # Check für weitere Seiten
-            resume_token=$(echo "$body" | jq -r '.resume // ""' 2>/dev/null)
-
-            if [ -z "$resume_token" ] || [ "$resume_token" = "null" ]; then
-                break
-            fi
-        else
-            # Fallback ohne jq
-            print_warning "jq nicht installiert - Anzeige eingeschränkt"
-            echo "$body"
-            break
-        fi
-    done
-
-    echo
-    echo
-
-    # Merge alle temporären Dateien zu einem JSON Array
-    if command -v jq >/dev/null 2>&1 && [ $page_count -gt 0 ]; then
-        # Kombiniere alle Seiten zu einem großen Array
-        local merged_quotas_file="/tmp/all_quotas_$$.json"
-
-        # Starte mit leerem Array
-        echo "[]" > "$merged_quotas_file"
-
-        # Füge alle Seiten hinzu
-        for i in $(seq 1 $page_count); do
-            local page_file="/tmp/quotas_page_${i}_$$.json"
-            if [ -f "$page_file" ]; then
-                jq -s '.[0] + .[1]' "$merged_quotas_file" "$page_file" > "${merged_quotas_file}.tmp" 2>/dev/null
-                mv "${merged_quotas_file}.tmp" "$merged_quotas_file"
-            fi
-        done
-
-        # Erstelle formatierte Tabelle
-        echo -e "${CYAN}============================================================================${NC}"
-        printf "${WHITE}%-40s %-15s %-15s %-10s${NC}\n" "PFAD" "HARD LIMIT" "SOFT LIMIT" "VERWENDET"
-        echo -e "${CYAN}============================================================================${NC}"
-
-        cat "$merged_quotas_file" | jq -r '.[] |
-            "\(.path // "N/A")|
-            \(if .thresholds.hard then (.thresholds.hard / 1024 / 1024 | tostring) + " MB" else "Kein Limit" end)|
-            \(if .thresholds.soft then (.thresholds.soft / 1024 / 1024 | tostring) + " MB" else "Kein Limit" end)|
-            \(if .usage.logical then (.usage.logical / 1024 / 1024 | round | tostring) + " MB" else "0 MB" end)"' |
-        while IFS='|' read -r path hard soft used; do
-            # Kürze Pfad wenn zu lang
-            if [ ${#path} -gt 38 ]; then
-                path="...${path: -35}"
-            fi
-            printf "%-40s %-15s %-15s %-10s\n" "$path" "$hard" "$soft" "$used"
-        done
-
-        echo -e "${CYAN}============================================================================${NC}"
-
-        # Statistiken
-        local with_hard=$(cat "$merged_quotas_file" | jq '[.[] | select(.thresholds.hard)] | length')
-        local with_soft=$(cat "$merged_quotas_file" | jq '[.[] | select(.thresholds.soft)] | length')
-        local with_advisory=$(cat "$merged_quotas_file" | jq '[.[] | select(.thresholds.advisory)] | length')
-        local over_soft=$(cat "$merged_quotas_file" | jq '[.[] | select(.thresholds.soft and .usage.logical > .thresholds.soft)] | length')
-        local over_hard=$(cat "$merged_quotas_file" | jq '[.[] | select(.thresholds.hard and .usage.logical > .thresholds.hard)] | length')
-
-        echo
-        echo -e "${GREEN}${BOLD}===== QUOTA STATISTIKEN =====${NC}"
-        printf "${YELLOW}Gesamt Quotas:${NC} ${WHITE}%d${NC}\n" "$total_quotas"
-        printf "${YELLOW}Mit Hard Limit:${NC} ${WHITE}%d${NC}\n" "$with_hard"
-        printf "${YELLOW}Mit Soft Limit:${NC} ${WHITE}%d${NC}\n" "$with_soft"
-        printf "${YELLOW}Mit Advisory:${NC} ${WHITE}%d${NC}\n" "$with_advisory"
-
-        if [ "$over_soft" -gt 0 ]; then
-            printf "${YELLOW}Soft Limit überschritten:${NC} ${RED}%d${NC}\n" "$over_soft"
-        fi
-        if [ "$over_hard" -gt 0 ]; then
-            printf "${YELLOW}Hard Limit überschritten:${NC} ${RED}${BOLD}%d${NC}\n" "$over_hard"
-        fi
-        echo -e "${GREEN}==============================${NC}"
-
-        # Cleanup temporäre Dateien
-        rm -f /tmp/quotas_page_*_$$.json "$merged_quotas_file"
-    fi
-
-    echo
-    press_any_key
-}
-
-main_menu() {
-    while true; do
-        print_header
-        print_step "Hauptmenü"
-
-        echo -e "${GREEN}Verbunden mit:${NC} $CLUSTER_ADDRESS"
-        echo -e "${GREEN}Benutzer:${NC} $API_USER"
-        echo
-        echo -e "${WHITE}Wählen Sie eine Option:${NC}"
-        echo
-        echo -e "${WHITE}1)${NC} Quotas erstellen (Wizard)"
-        echo -e "${WHITE}2)${NC} Quotas anzeigen (Liste aller Quotas)"
-        echo -e "${WHITE}3)${NC} Verbindung trennen und beenden"
-        echo
-
-        read -p "$(echo -e ${WHITE}${ARROW} Auswahl [1-3]:${NC} )" choice
-
-        case $choice in
-            1)
-                # Quota-Erstellung
-                get_base_path
-                get_prefix
-                get_count
-                get_owner_settings
-                get_quota_configuration
-                get_quota_advanced_options
-                get_parallel_settings
-
-                show_summary
-
-                if confirm_action "Starten?"; then
-                    execute_creation
-                    press_any_key
-                fi
-                ;;
-            2)
-                # Quotas anzeigen
-                list_all_quotas
-                ;;
-            3)
-                # Beenden
-                print_info "Verbindung wird getrennt..."
-                echo
-                print_success "Programm beendet."
-                exit 0
-                ;;
-            *)
-                print_error "Ungültige Auswahl!"
-                sleep 1
-                ;;
-        esac
-    done
 }
 
 ################################################################################
@@ -1081,7 +759,21 @@ main_menu() {
 main() {
     check_system
     connect_cluster
-    main_menu
+    
+    # Only Creation Mode implemented for API version v1
+    get_base_path
+    get_prefix
+    get_count
+    get_owner_settings
+    get_quota_configuration
+    get_quota_advanced_options
+    get_parallel_settings
+    
+    show_summary
+    
+    if confirm_action "Starten?"; then
+        execute_creation
+    fi
 }
 
 main

@@ -733,60 +733,84 @@ create_dirs_sequential() {
     local success=0
     local failed=0
     local start_time=$(date +%s)
-    
+    local current_operation=""
+
     for i in $(seq 1 $COUNT); do
         local dir_name="${PREFIX}_$(printf "%04d" $i)"
         local dir_path="${BASE_PATH}/${dir_name}"
-        
+
+        # Aktuelle Operation anzeigen
+        current_operation="Erstelle Verzeichnis: $dir_name"
+        printf "\r${BLUE}${current_operation}${NC} ${CYAN}(%d/%d)${NC}" "$i" "$COUNT"
+
         # Verzeichnis erstellen
         if mkdir -p "$dir_path" 2>/dev/null; then
             # Owner setzen (falls gewünscht)
             if [ "$SET_OWNER" = "y" ]; then
+                current_operation="Setze Owner: $dir_name"
+                printf "\r${BLUE}${current_operation}${NC} ${CYAN}(%d/%d)${NC}" "$i" "$COUNT"
+
                 if ! chown "$OWNER_USER:$OWNER_GROUP" "$dir_path" 2>/dev/null; then
-                    print_error "Owner-Fehler: $dir_name"
+                    printf "\r${RED}${CROSS}${NC} Owner-Fehler: $dir_name ${CYAN}(%d/%d)${NC}\n" "$i" "$COUNT"
                     ((failed++))
                     continue
                 fi
             fi
-            
+
+            # Quota erstellen anzeigen
+            current_operation="Erstelle Quota: $dir_name"
+            printf "\r${BLUE}${current_operation}${NC} ${CYAN}(%d/%d)${NC}" "$i" "$COUNT"
+
             # Quota-Befehl zusammenbauen
             local quota_cmd="isi quota quotas create \"$dir_path\" directory --hard-threshold \"$QUOTA_HARD\""
             quota_cmd="$quota_cmd --thresholds-on \"$QUOTA_THRESHOLDS_ON\""
             quota_cmd="$quota_cmd --include-snapshots $QUOTA_INCLUDE_SNAPSHOTS"
-            
+
             # Soft Threshold hinzufügen (optional)
             if [ -n "$QUOTA_SOFT" ]; then
                 quota_cmd="$quota_cmd --soft-threshold \"$QUOTA_SOFT\""
                 quota_cmd="$quota_cmd --soft-grace $QUOTA_SOFT_GRACE"
             fi
-            
+
             # Advisory Threshold hinzufügen (optional)
             if [ -n "$QUOTA_ADVISORY" ]; then
                 quota_cmd="$quota_cmd --advisory-threshold \"$QUOTA_ADVISORY\""
             fi
-            
+
             # Quota erstellen
             if eval "$quota_cmd" 2>/dev/null; then
+                printf "\r${GREEN}${CHECK}${NC} Erfolgreich: $dir_name ${CYAN}(%d/%d)${NC}\n" "$i" "$COUNT"
                 ((success++))
             else
-                print_error "Quota-Fehler: $dir_name"
+                printf "\r${RED}${CROSS}${NC} Quota-Fehler: $dir_name ${CYAN}(%d/%d)${NC}\n" "$i" "$COUNT"
                 ((failed++))
             fi
         else
-            print_error "Verzeichnis-Fehler: $dir_name"
+            printf "\r${RED}${CROSS}${NC} Verzeichnis-Fehler: $dir_name ${CYAN}(%d/%d)${NC}\n" "$i" "$COUNT"
             ((failed++))
         fi
-        
-        # Fortschritt anzeigen
-        if [ $((i % 50)) -eq 0 ]; then
+
+        # Detaillierter Fortschritt alle 25 Items oder bei wichtigen Meilensteinen
+        if [ $((i % 25)) -eq 0 ] || [ $i -eq $COUNT ] || [ $i -eq 1 ]; then
             local percent=$((i * 100 / COUNT))
             local elapsed=$(($(date +%s) - start_time))
-            printf "\r${CYAN}Fortschritt:${NC} [%-50s] ${WHITE}%d%%${NC} ${CYAN}(%d/%d)${NC} ${YELLOW}Zeit: %ds${NC}" \
-                "$(printf '#%.0s' $(seq 1 $((percent / 2))))" \
-                "$percent" "$i" "$COUNT" "$elapsed"
+            local remaining=$((COUNT - i))
+            local eta=0
+            if [ $i -gt 0 ]; then
+                eta=$((elapsed * remaining / i))
+            fi
+
+            echo
+            echo -e "${CYAN}========================================${NC}"
+            printf "${YELLOW}Status:${NC} [%-20s] ${WHITE}%d%%${NC}\n" "$(printf '#%.0s' $(seq 1 $((percent / 5))))" "$percent"
+            printf "${YELLOW}Fortschritt:${NC} ${WHITE}%d${NC} von ${WHITE}%d${NC} Quotas erstellt\n" "$i" "$COUNT"
+            printf "${YELLOW}Erfolgreich:${NC} ${GREEN}%d${NC} | ${YELLOW}Fehlgeschlagen:${NC} ${RED}%d${NC}\n" "$success" "$failed"
+            printf "${YELLOW}Zeit:${NC} %dm %ds | ${YELLOW}ETA:${NC} %dm %ds\n" "$((elapsed / 60))" "$((elapsed % 60))" "$((eta / 60))" "$((eta % 60))"
+            echo -e "${CYAN}========================================${NC}"
+            echo
         fi
     done
-    
+
     echo
     return $((success > 0 ? 0 : 1))
 }
@@ -795,7 +819,8 @@ create_dir_with_quota() {
     local i=$1
     local dir_name="${PREFIX}_$(printf "%04d" $i)"
     local dir_path="${BASE_PATH}/${dir_name}"
-    
+
+    # Verzeichnis erstellen
     if mkdir -p "$dir_path" 2>/dev/null; then
         # Owner setzen (falls gewünscht)
         if [ "$SET_OWNER" = "y" ]; then
@@ -804,47 +829,140 @@ create_dir_with_quota() {
                 return 1
             fi
         fi
-        
+
         # Quota-Befehl zusammenbauen
         local quota_cmd="isi quota quotas create \"$dir_path\" directory --hard-threshold \"$QUOTA_HARD\""
         quota_cmd="$quota_cmd --thresholds-on \"$QUOTA_THRESHOLDS_ON\""
         quota_cmd="$quota_cmd --include-snapshots $QUOTA_INCLUDE_SNAPSHOTS"
-        
+
         # Soft Threshold hinzufügen (optional)
         if [ -n "$QUOTA_SOFT" ]; then
             quota_cmd="$quota_cmd --soft-threshold \"$QUOTA_SOFT\""
             quota_cmd="$quota_cmd --soft-grace $QUOTA_SOFT_GRACE"
         fi
-        
+
         # Advisory Threshold hinzufügen (optional)
         if [ -n "$QUOTA_ADVISORY" ]; then
             quota_cmd="$quota_cmd --advisory-threshold \"$QUOTA_ADVISORY\""
         fi
-        
+
         # Quota erstellen
         if eval "$quota_cmd" 2>/dev/null; then
+            echo "SUCCESS: $dir_name" >&1
             return 0
+        else
+            echo "QUOTA_ERROR: $dir_name" >&2
+            return 1
         fi
+    else
+        echo "MKDIR_ERROR: $dir_name" >&2
+        return 1
     fi
-    return 1
 }
 
 create_dirs_parallel() {
     export -f create_dir_with_quota
     export BASE_PATH PREFIX QUOTA_HARD QUOTA_SOFT QUOTA_ADVISORY QUOTA_SOFT_GRACE QUOTA_THRESHOLDS_ON QUOTA_INCLUDE_SNAPSHOTS
     export SET_OWNER OWNER_USER OWNER_GROUP
-    
+
     local start_time=$(date +%s)
-    
+    local success=0
+    local failed=0
+    local temp_dir="/tmp/quota_local_$$"
+    mkdir -p "$temp_dir"
+
+    # Vereinfachtes Progress-Monitoring ohne flock
+    (
+        local last_reported=0
+        while [ ! -f "$temp_dir/done" ]; do
+            local current_success=$(ls "$temp_dir"/success_* 2>/dev/null | wc -l | tr -d ' ')
+            local current_failed=$(ls "$temp_dir"/failed_* 2>/dev/null | wc -l | tr -d ' ')
+            local current_total=$((current_success + current_failed))
+
+            if [ $current_total -gt $last_reported ]; then
+                local percent=$((current_total * 100 / COUNT))
+                local elapsed=$(($(date +%s) - start_time))
+                local remaining=$((COUNT - current_total))
+                local eta=0
+                if [ $current_total -gt 0 ]; then
+                    eta=$((elapsed * remaining / current_total))
+                fi
+
+                printf "\r${CYAN}Parallel-Fortschritt:${NC} [%-30s] ${WHITE}%d%%${NC} ${CYAN}(%d/%d)${NC}" \
+                    "$(printf '#%.0s' $(seq 1 $((percent / 3))))" \
+                    "$percent" "$current_total" "$COUNT"
+                printf " ${GREEN}\u2713%d${NC} ${RED}\u2717%d${NC} ${YELLOW}ETA:%dm%ds${NC}" \
+                    "$current_success" "$current_failed" "$((eta / 60))" "$((eta % 60))"
+
+                # Detaillierte Updates alle 50 Items
+                if [ $((current_total % 50)) -eq 0 ] && [ $current_total -gt $last_reported ]; then
+                    echo
+                    echo -e "${CYAN}===== Zwischenstand (Parallel-Modus) =====${NC}"
+                    printf "${YELLOW}Verarbeitet:${NC} ${WHITE}%d${NC} von ${WHITE}%d${NC} Quotas\n" "$current_total" "$COUNT"
+                    printf "${YELLOW}Erfolgreich:${NC} ${GREEN}%d${NC} | ${YELLOW}Fehlgeschlagen:${NC} ${RED}%d${NC}\n" "$current_success" "$current_failed"
+                    printf "${YELLOW}Laufzeit:${NC} %dm %ds | ${YELLOW}Restzeit:${NC} %dm %ds\n" "$((elapsed / 60))" "$((elapsed % 60))" "$((eta / 60))" "$((eta % 60))"
+                    printf "${YELLOW}Jobs parallel:${NC} ${WHITE}%d${NC}\n" "$PARALLEL_JOBS"
+                    echo -e "${CYAN}===========================================${NC}"
+                fi
+                last_reported=$current_total
+            fi
+            sleep 1
+        done
+    ) &
+    local progress_pid=$!
+
+    # Parallele Ausführung mit vereinfachtem Tracking
     if command -v parallel &> /dev/null; then
-        seq 1 $COUNT | parallel --bar -j $PARALLEL_JOBS create_dir_with_quota 2>&1
+        # GNU Parallel mit File-basiertem Tracking
+        seq 1 $COUNT | parallel -j $PARALLEL_JOBS "
+            dir_name=\"${PREFIX}_\$(printf '%04d' {})\"
+            if create_dir_with_quota {} >/dev/null 2>&1; then
+                touch \"$temp_dir/success_{}\"
+                echo \"${GREEN}\u2713${NC} \$dir_name\"
+            else
+                touch \"$temp_dir/failed_{}\"
+                echo \"${RED}\u2717${NC} \$dir_name\"
+            fi
+        " 2>/dev/null
     else
-        seq 1 $COUNT | xargs -P $PARALLEL_JOBS -I {} bash -c 'create_dir_with_quota "$@"' _ {}
+        # xargs Fallback mit File-basiertem Tracking
+        seq 1 $COUNT | xargs -P $PARALLEL_JOBS -I {} bash -c '
+            dir_name="${PREFIX}_$(printf "%04d" $1)"
+            if create_dir_with_quota "$1" >/dev/null 2>&1; then
+                touch "'$temp_dir'/success_$1"
+                printf "${GREEN}\u2713${NC} %s\n" "$dir_name"
+            else
+                touch "'$temp_dir'/failed_$1"
+                printf "${RED}\u2717${NC} %s\n" "$dir_name"
+            fi
+        ' _ {}
     fi
-    
+
+    # Signal für Progress-Monitor
+    touch "$temp_dir/done"
+
+    # Progress-Monitoring stoppen
+    kill $progress_pid 2>/dev/null
+    wait $progress_pid 2>/dev/null
+
+    # Finale Statistiken
+    success=$(ls "$temp_dir"/success_* 2>/dev/null | wc -l | tr -d ' ')
+    failed=$(ls "$temp_dir"/failed_* 2>/dev/null | wc -l | tr -d ' ')
+
+    # Cleanup
+    rm -rf "$temp_dir"
+
     local elapsed=$(($(date +%s) - start_time))
     echo
-    print_info "Verarbeitungszeit: ${elapsed}s"
+    echo
+    echo -e "${GREEN}${BOLD}===== Parallel-Verarbeitung Abgeschlossen =====${NC}"
+    printf "${YELLOW}Verarbeitungszeit:${NC} ${WHITE}%dm %ds${NC}\n" "$((elapsed / 60))" "$((elapsed % 60))"
+    printf "${YELLOW}Erfolgreich:${NC} ${GREEN}%d${NC} | ${YELLOW}Fehlgeschlagen:${NC} ${RED}%d${NC}\n" "$success" "$failed"
+    if [ $success -gt 0 ]; then
+        local avg_time=$((elapsed * 1000 / success))
+        printf "${YELLOW}Durchschnitt:${NC} ${WHITE}%dms${NC} pro erfolgreichem Verzeichnis\n" "$avg_time"
+    fi
+    echo -e "${GREEN}=============================================${NC}"
 }
 
 execute_creation() {
