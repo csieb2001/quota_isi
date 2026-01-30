@@ -634,15 +634,50 @@ size_to_bytes() {
 
 create_dir_with_quota_api() {
     local i=$1
+    local log_file="${2:-}"
     local dir_name="${PREFIX}_$(printf "%04d" $i)"
     local dir_path="${BASE_PATH}/${dir_name}"
 
+    # Detailliertes Logging wenn gewünscht
+    if [ -n "$log_file" ]; then
+        echo "================== JOB #$i ==================" >> "$log_file"
+        echo "Timestamp: $(date '+%Y-%m-%d %H:%M:%S')" >> "$log_file"
+        echo "Directory: $dir_name" >> "$log_file"
+        echo "Full Path: $dir_path" >> "$log_file"
+        echo "" >> "$log_file"
+    fi
+
     # 1. Create Directory via API
+    if [ -n "$log_file" ]; then
+        echo "[API REQUEST - CREATE DIR]" >> "$log_file"
+        echo "Method: PUT" >> "$log_file"
+        echo "Endpoint: /namespace${dir_path}" >> "$log_file"
+        echo "Headers: x-isi-ifs-target-type: container" >> "$log_file"
+        echo "" >> "$log_file"
+    fi
+
     local mkdir_response=$(api_request "PUT" "/namespace${dir_path}" "" "x-isi-ifs-target-type: container")
     local mkdir_http_code=$(echo "$mkdir_response" | tail -n1)
+    local mkdir_body=$(echo "$mkdir_response" | sed '$d')
+
+    if [ -n "$log_file" ]; then
+        echo "[API RESPONSE - CREATE DIR]" >> "$log_file"
+        echo "HTTP Status: $mkdir_http_code" >> "$log_file"
+        [ -n "$mkdir_body" ] && echo "Response: $mkdir_body" >> "$log_file"
+        echo "" >> "$log_file"
+    fi
 
     if [ "$mkdir_http_code" != "200" ] && [ "$mkdir_http_code" != "201" ] && [ "$mkdir_http_code" != "204" ]; then
         echo "API_MKDIR_ERROR: $dir_name (HTTP $mkdir_http_code)" >&2
+
+        # Debug: Output API error message
+        if [ -n "$mkdir_body" ] && command -v jq >/dev/null 2>&1; then
+            local mkdir_err_msg=$(echo "$mkdir_body" | jq -r '.errors[0].message // "Unknown error"' 2>/dev/null)
+            echo "API_DEBUG: $dir_name - $mkdir_err_msg" >&2
+            [ -n "$log_file" ] && echo "[ERROR] Directory creation failed: $mkdir_err_msg" >> "$log_file"
+        else
+            [ -n "$log_file" ] && echo "[ERROR] Directory creation failed" >> "$log_file"
+        fi
         return 1
     fi
 
@@ -684,21 +719,87 @@ create_dir_with_quota_api() {
     fi
 
     # Execute Quota API Call
+    if [ -n "$log_file" ]; then
+        echo "[API REQUEST - CREATE QUOTA]" >> "$log_file"
+        echo "Method: POST" >> "$log_file"
+        echo "Endpoint: /platform/1/quota/quotas" >> "$log_file"
+        echo "Request Body:" >> "$log_file"
+        echo "$quota_json" | jq '.' >> "$log_file" 2>/dev/null || echo "$quota_json" >> "$log_file"
+        echo "" >> "$log_file"
+    fi
+
     local quota_resp=$(api_request "POST" "/platform/1/quota/quotas" "$quota_json")
     local quota_http_code=$(echo "$quota_resp" | tail -n1)
     local quota_body=$(echo "$quota_resp" | sed '$d')
 
+    if [ -n "$log_file" ]; then
+        echo "[API RESPONSE - CREATE QUOTA]" >> "$log_file"
+        echo "HTTP Status: $quota_http_code" >> "$log_file"
+        if [ -n "$quota_body" ]; then
+            echo "Response Body:" >> "$log_file"
+            echo "$quota_body" | jq '.' >> "$log_file" 2>/dev/null || echo "$quota_body" >> "$log_file"
+        fi
+        echo "" >> "$log_file"
+    fi
+
     if [ "$quota_http_code" = "201" ] || [ "$quota_http_code" = "200" ]; then
         echo "API_SUCCESS: $dir_name" >&1
+        [ -n "$log_file" ] && echo "[SUCCESS] Operation completed successfully" >> "$log_file"
         return 0
     else
         echo "API_QUOTA_ERROR: $dir_name (HTTP $quota_http_code)" >&2
         if [ -n "$quota_body" ] && command -v jq >/dev/null 2>&1; then
             local err_msg=$(echo "$quota_body" | jq -r '.errors[0].message // "Unknown error"' 2>/dev/null)
-            echo "API_ERROR_MSG: $dir_name - $err_msg" >&2
+            echo "API_DEBUG: $dir_name - $err_msg" >&2
+            [ -n "$log_file" ] && echo "[ERROR] Quota creation failed: $err_msg" >> "$log_file"
+        else
+            [ -n "$log_file" ] && echo "[ERROR] Quota creation failed" >> "$log_file"
         fi
         return 1
     fi
+}
+
+show_job_monitor() {
+    local temp_dir="$1"
+    local job_id="$2"
+
+    clear
+    echo -e "${CYAN}========================================================================${NC}"
+    echo -e "${WHITE}${BOLD}                     JOB MONITOR - API Details                         ${NC}"
+    echo -e "${CYAN}========================================================================${NC}"
+    echo
+
+    if [ "$job_id" = "list" ]; then
+        # Liste alle Jobs
+        echo -e "${WHITE}Verfügbare Job-Logs:${NC}"
+        echo
+        printf "%-10s %-30s %-10s\n" "Job #" "Verzeichnis" "Status"
+        echo -e "${CYAN}------------------------------------------------------------------------${NC}"
+
+        for i in $(seq 1 $COUNT); do
+            local log_file="$temp_dir/logs/job_$i.log"
+            if [ -f "$log_file" ]; then
+                local dir_name="${PREFIX}_$(printf "%04d" $i)"
+                local status="${YELLOW}RUNNING${NC}"
+                [ -f "$temp_dir/success_$i" ] && status="${GREEN}SUCCESS${NC}"
+                [ -f "$temp_dir/failed_$i" ] && status="${RED}FAILED${NC}"
+                printf "%-10s %-30s " "$i" "$dir_name"
+                echo -e "$status"
+            fi
+        done
+    elif [ -f "$temp_dir/logs/job_$job_id.log" ]; then
+        # Zeige spezifischen Job
+        echo -e "${WHITE}Job #$job_id - API Request/Response Details:${NC}"
+        echo -e "${CYAN}------------------------------------------------------------------------${NC}"
+        cat "$temp_dir/logs/job_$job_id.log"
+        echo -e "${CYAN}------------------------------------------------------------------------${NC}"
+    else
+        echo -e "${RED}Job #$job_id nicht gefunden oder noch nicht gestartet${NC}"
+    fi
+
+    echo
+    echo -e "${WHITE}Drücke eine Taste zum Fortfahren...${NC}"
+    read -n1 -s
 }
 
 execute_creation() {
@@ -726,12 +827,21 @@ execute_creation() {
         local output_file="$temp_dir/output.txt"
         > "$output_file"
 
-        # Fortschritts-Tracker im Hintergrund (nur Statuszeile, keine Details)
+        # Monitor-Control-Datei
+        local monitor_control="$temp_dir/monitor_control"
+        echo "running" > "$monitor_control"
+
+        # Fortschritts-Tracker mit interaktiver Monitor-Option
         (
-            while [ $completed -lt $COUNT ]; do
+            while [ "$(cat $monitor_control 2>/dev/null)" = "running" ]; do
                 local current_success=$(ls "$temp_dir"/success_* 2>/dev/null | wc -l | tr -d ' ')
                 local current_failed=$(ls "$temp_dir"/failed_* 2>/dev/null | wc -l | tr -d ' ')
                 local current_total=$((current_success + current_failed))
+
+                if [ $current_total -ge $COUNT ]; then
+                    echo "done" > "$monitor_control"
+                    break
+                fi
 
                 if [ $current_total -gt 0 ]; then
                     local percent=$((current_total * 100 / COUNT))
@@ -742,9 +852,9 @@ execute_creation() {
                         eta=$((elapsed * remaining / current_total))
                     fi
 
-                    # Nur einzelne Statuszeile, überschreiben mit \r
-                    printf "\r${CYAN}API Parallel:${NC} [%-25s] ${WHITE}%3d%%${NC} ${CYAN}(%d/%d)${NC} ${GREEN}✓%d${NC} ${RED}✗%d${NC} ${YELLOW}ETA:%dm%ds${NC}  " \
-                        "$(printf '#%.0s' $(seq 1 $((percent / 4))))" \
+                    # Statuszeile
+                    printf "\r${CYAN}Parallel:${NC} [%-20s] ${WHITE}%3d%%${NC} ${CYAN}(%d/%d)${NC} ${GREEN}✓%d${NC} ${RED}✗%d${NC} ${YELLOW}ETA:%dm%ds${NC}     " \
+                        "$(printf '#%.0s' $(seq 1 $((percent / 5))))" \
                         "$percent" "$current_total" "$COUNT" \
                         "$current_success" "$current_failed" \
                         "$((eta / 60))" "$((eta % 60))"
@@ -766,13 +876,24 @@ execute_creation() {
 
                 local dir_name="${PREFIX}_$(printf "%04d" $i)"
 
-                # Führe Aktion aus und sammle Ergebnis
-                if create_dir_with_quota_api "$i" >/dev/null 2>&1; then
+                # Führe Aktion aus mit detailliertem Logging
+                local job_log="$temp_dir/logs/job_$i.log"
+
+                # Capture stderr for debug messages in parallel mode
+                local error_output
+                if error_output=$(create_dir_with_quota_api "$i" "$job_log" 2>&1 >/dev/null); then
                     touch "$temp_dir/success_$i"
                     echo "SUCCESS:$i:$dir_name" >> "$worker_log"
+                    echo "[FINAL STATUS] SUCCESS" >> "$job_log"
                 else
                     touch "$temp_dir/failed_$i"
                     echo "FAILED:$i:$dir_name" >> "$worker_log"
+                    echo "[FINAL STATUS] FAILED" >> "$job_log"
+                    # Add debug messages to job log
+                    if [ -n "$error_output" ]; then
+                        echo "[DEBUG MESSAGES]" >> "$job_log"
+                        echo "$error_output" >> "$job_log"
+                    fi
                 fi
             done
         }
@@ -788,13 +909,64 @@ execute_creation() {
             job_pids+=($!)
         done
 
-        # Warte auf alle Worker
+        # Warte auf alle Worker mit Option für Monitor
+        echo
+        echo -e "${CYAN}Jobs laufen...${NC}"
+        echo -e "${YELLOW}Drücke 'Enter' für Job-Monitor oder warte auf Abschluss${NC}"
+        echo
+
+        local all_done=0
+        while [ $all_done -eq 0 ]; do
+            # Check ob alle Jobs fertig sind
+            local still_running=0
+            for pid in "${job_pids[@]}"; do
+                if kill -0 $pid 2>/dev/null; then
+                    still_running=1
+                    break
+                fi
+            done
+
+            if [ $still_running -eq 0 ]; then
+                all_done=1
+            else
+                # Warte kurz und prüfe auf User-Input
+                if read -t 1 -n1 key; then
+                    echo
+                    echo -e "${YELLOW}Job-Monitor Menü:${NC}"
+                    echo -e "  ${WHITE}l${NC}  - Liste alle Jobs"
+                    echo -e "  ${WHITE}1-$COUNT${NC} - Zeige spezifischen Job  "
+                    echo -e "  ${WHITE}c${NC}  - Weiter mit Ausführung"
+                    echo
+                    read -p "$(echo -e ${WHITE}${ARROW} Auswahl:${NC} )" choice
+
+                    case "$choice" in
+                        l|L|list)
+                            show_job_monitor "$temp_dir" "list"
+                            ;;
+                        c|C|"")
+                            echo "Weiter mit Ausführung..."
+                            ;;
+                        *)
+                            if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "$COUNT" ]; then
+                                show_job_monitor "$temp_dir" "$choice"
+                            else
+                                echo -e "${RED}Ungültige Eingabe${NC}"
+                            fi
+                            ;;
+                    esac
+                    echo
+                fi
+            fi
+        done
+
+        # Warte auf alle Worker (sicherheitshalber)
         for pid in "${job_pids[@]}"; do
-            wait $pid
+            wait $pid 2>/dev/null
         done
         completed=$COUNT
 
-        # Stoppe Progress-Monitor
+        # Stoppe Monitoring-Prozesse
+        echo "done" > "$monitor_control"
         kill $progress_pid 2>/dev/null
         wait $progress_pid 2>/dev/null
 
@@ -835,11 +1007,19 @@ execute_creation() {
             # Aktuelle Operation detailliert anzeigen
             printf "\r${BLUE}Erstelle via API: $dir_name${NC} ${CYAN}(%d/%d)${NC}" "$i" "$COUNT"
 
-            if create_dir_with_quota_api "$i" >/dev/null 2>&1; then
+            # Capture stderr to show debug messages
+            local error_output
+            if error_output=$(create_dir_with_quota_api "$i" 2>&1 >/dev/null); then
                 printf "\r${GREEN}${CHECK}${NC} API Erfolgreich: $dir_name ${CYAN}(%d/%d)${NC}\n" "$i" "$COUNT"
                 ((success++))
             else
                 printf "\r${RED}${CROSS}${NC} API Fehler: $dir_name ${CYAN}(%d/%d)${NC}\n" "$i" "$COUNT"
+                # Show debug messages
+                if [ -n "$error_output" ]; then
+                    echo "$error_output" | grep "API_DEBUG:" | while read line; do
+                        echo "  $line"
+                    done
+                fi
                 ((failed++))
             fi
 
@@ -905,7 +1085,7 @@ list_all_quotas() {
             api_path="${api_path}?resume=${resume_token}"
         else
             # Nur beim ersten Aufruf limit setzen
-            api_path="${api_path}?limit=1000"
+            api_path="${api_path}?limit=3000"
         fi
 
         local response=$(api_request "GET" "$api_path")
